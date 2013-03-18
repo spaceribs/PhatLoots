@@ -1,0 +1,34 @@
+name: PhatLoots
+main: com.codisimus.plugins.phatloots.PhatLoots
+version: 2.6.1
+author: Codisimus
+website: www.codisimus.com
+description: Chests with randomly generated money/items
+load: postworld
+softdepend: [Vault, EpicBossRecoded]
+commands:
+  loot:
+    description: Used to setup PhatLoot Chests and rewards
+    usage: /<command> help
+permissions:
+  phatloots.loot.*:
+    description: Needed to receive loots from any PhatLoot
+  phatloots.moneyfrommobs:
+    description: Needed to receive money from mobs
+    default: true
+  phatloots.commandloot:
+    description: Needed to receive loots through command
+  phatloots.make:
+    description: Needed to make a PhatLoot (/loot make, /loot delete, /loot link, /loot unlink, /loot description, /loot add, /loot remove, /loot money, /loot time, /loot type)
+  phatloots.reset:
+    description: Needed to reset the list of users who looted PhatLoots (/loot reset)
+  phatloots.list:
+    description: Needed to list all current PhatLoots (/loot list)
+  phatloots.info:
+    description: Needed to see loot information of a given PhatLoot (/loot info)
+  phatloots.name:
+    description: Needed to see the name of the PhatLoot that a chest belongs to (/loot name)
+  phatloots.give:
+    description: Needed to force a Player to open a PhatLoot chest (/loot give)
+  phatloots.admin:
+    description: Needed to break linked Blocks
