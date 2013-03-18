@@ -335,6 +335,7 @@ public class PhatLootsListener implements Listener {
 		}
 		return false;
 	}
+	
 	/**
 	 * Returns true if the given Block has been removed from a PhatLoot collection
 	 * 
@@ -342,7 +343,6 @@ public class PhatLootsListener implements Listener {
 	 *            the given Block
 	 * @return True if the given Block is removed from PhatLoots
 	 */
-	
 	public boolean removePhatLootChest(Block block) {
 		PhatLootChest plChest = new PhatLootChest(block);
 		for (PhatLoot phatLoot : PhatLoots.getPhatLoots()) {
