@@ -1,7 +1,6 @@
 package com.codisimus.plugins.phatloots;
 
-import com.codisimus.plugins.regionown.Region;
-import com.codisimus.plugins.regionown.RegionOwn;
+import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.LinkedList;
 import org.bukkit.Location;
@@ -10,15 +9,11 @@ import org.bukkit.block.Block;
 import org.bukkit.block.Chest;
 import org.bukkit.block.Dispenser;
 import org.bukkit.entity.HumanEntity;
-import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.block.Action;
 import org.bukkit.event.block.BlockBreakEvent;
-import org.bukkit.event.block.BlockPhysicsEvent;
-import org.bukkit.event.entity.CreatureSpawnEvent;
-import org.bukkit.event.entity.EntityDeathEvent;
 import org.bukkit.event.inventory.InventoryCloseEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.inventory.DoubleChestInventory;
@@ -27,352 +22,266 @@ import org.bukkit.inventory.InventoryHolder;
 
 /**
  * Listens for interactions with PhatLootChests
- * 
+ *
  * @author Codisimus
  */
 public class PhatLootsListener implements Listener {
-	static String chestName;
-	private static HashMap<String, ForgettableInventory> inventories = new HashMap<String, ForgettableInventory>();
-	static boolean mobRegions = false;
+    static String chestName;
+    static EnumMap<Material, String> types = new EnumMap(Material.class);
+    private static HashMap<String, ForgettableInventory> inventories = new HashMap<String, ForgettableInventory>();
 
-	/**
-	 * Checks if a Player loots a PhatLootChest
-	 * 
-	 * @param event
-	 *            The PlayerInteractEvent that occurred
-	 */
-	@EventHandler(ignoreCancelled = true)
-	public void onPlayerInteract(PlayerInteractEvent event) {
-		Player player = event.getPlayer();
-		Chest chest = null;
-		Inventory inventory = null;
-		Block block = event.getClickedBlock();
-		LinkedList<PhatLoot> phatLoots;
+    /**
+     * Checks if a Player loots a PhatLootChest
+     *
+     * @param event The PlayerInteractEvent that occurred
+     */
+    @EventHandler (ignoreCancelled = true)
+    public void onPlayerInteract(PlayerInteractEvent event) {
+        Block block = event.getClickedBlock();
+        Material type = block.getType();
+        if (!types.containsKey(type)) {
+            return;
+        }
 
-		switch (block.getType()) {
-		case DISPENSER:
-			// Return if the Dispenser was not punched
-			if (!event.getAction().equals(Action.LEFT_CLICK_BLOCK)) {
-				return;
-			}
+        Player player = event.getPlayer();
+        Inventory inventory = null;
+        LinkedList<PhatLoot> phatLoots = null;
 
-			// Return if the Dispenser is not a PhatLootChest
-			phatLoots = PhatLoots.getPhatLoots(block, player);
-			if (phatLoots.isEmpty()) {
-				return;
-			}
+        if (types.get(type) != null) {
+            if (event.getAction() != Action.RIGHT_CLICK_BLOCK) {
+                return;
+            }
 
-			Dispenser dispenser = (Dispenser) block.getState();
-			inventory = dispenser.getInventory();
+            PhatLoot phatLoot = PhatLoots.getPhatLoot(types.get(type));
+            if (phatLoot == null) {
+                PhatLoots.logger.warning("PhatLoot " + types.get(type) + " does not exist");
+            }
 
-			break;
+            phatLoots = new LinkedList<PhatLoot>();
+            phatLoots.add(phatLoot);
+        }
 
-		case CHEST:
-			chest = (Chest) block.getState();
-			inventory = chest.getInventory();
+        switch (event.getAction()) {
+        case LEFT_CLICK_BLOCK:
+            if (type == Material.DISPENSER) {
+                if (phatLoots == null) {
+                    //Return if the Dispenser is not a PhatLootChest
+                    phatLoots = PhatLoots.getPhatLoots(block, player);
+                    if (phatLoots.isEmpty()) {
+                        return;
+                    }
+                }
 
-			// We only care about the left side because that is the Block that
-			// would be linked
-			if (inventory instanceof DoubleChestInventory) {
-				chest = (Chest) ((DoubleChestInventory) inventory)
-						.getLeftSide().getHolder();
-				block = chest.getBlock();
-			}
-			// Fall through
-		case ENDER_CHEST:
-			// Return if the Chest was not opened
-			if (event.getAction() != Action.RIGHT_CLICK_BLOCK) {
-				return;
-			}
+                Dispenser dispenser = (Dispenser) block.getState();
+                inventory = dispenser.getInventory();
+                break;
+            }
+            return;
 
-			// Return if the Chest is not a PhatLootChest
-			phatLoots = PhatLoots.getPhatLoots(block, player);
-			if (phatLoots.isEmpty()) {
-				return;
-			}
+        case RIGHT_CLICK_BLOCK:
+            switch (type) {
+            case TRAPPED_CHEST:
+            case CHEST:
+                Chest chest = (Chest) block.getState();
+                inventory = chest.getInventory();
 
-			boolean global = true;
-			for (PhatLoot phatLoot : phatLoots) {
-				if (!phatLoot.global) {
-					global = false;
-					break;
-				}
-			}
+                if (phatLoots == null) {
+                    //We only care about the left side because that is the Block that would be linked
+                    if (inventory instanceof DoubleChestInventory) {
+                        chest = (Chest) ((DoubleChestInventory) inventory).getLeftSide().getHolder();
+                        block = chest.getBlock();
+                    }
 
-			// Create the custom key using the Player Name and Block location
-			final String KEY = (global ? "global" : player.getName()) + "@"
-					+ block.getLocation().toString();
+                    //Return if the Chest is not a PhatLootChest
+                    phatLoots = PhatLoots.getPhatLoots(block, player);
+                    if (phatLoots.isEmpty()) {
+                        return;
+                    }
+                }
 
-			// Grab the custom Inventory belonging to the Player
-			ForgettableInventory fInventory = inventories.get(KEY);
-			if (fInventory != null) {
-				inventory = fInventory.getInventory();
-			} else {
-				String name = chestName.replace("<name>",
-						phatLoots.getFirst().name.replace('_', ' '));
+                boolean individual = false;
+                for (PhatLoot phatLoot : phatLoots) {
+                    if (!phatLoot.global) {
+                        individual = true;
+                        break;
+                    }
+                }
 
-				// Create a new Inventory for the Player
-				inventory = PhatLoots.server.createInventory(chest,
-						inventory == null ? 27 : inventory.getSize(), name);
+                if (individual) {
+                    //Create the custom key using the Player Name and Block location
+                    final String KEY = player.getName() + "@" + block.getLocation().toString();
 
-				fInventory = new ForgettableInventory(PhatLoots.plugin,
-						inventory) {
-					@Override
-					protected void execute() {
-						inventories.remove(KEY);
-					}
-				};
-				inventories.put(KEY, fInventory);
-			}
+                    //Grab the custom Inventory belonging to the Player
+                    ForgettableInventory fInventory = inventories.get(KEY);
+                    if (fInventory != null) {
+                        inventory = fInventory.getInventory();
+                    } else {
+                        String name = chestName.replace("<name>", phatLoots.getFirst().name.replace('_', ' '));
 
-			// Forget the Inventory in the scheduled time
-			fInventory.schedule();
+                        //Create a new Inventory for the Player
+                        inventory = PhatLoots.server.createInventory(chest,
+                                                                     inventory == null
+                                                                     ? 27
+                                                                     : inventory.getSize()
+                                                                     , name);
 
-			// Swap the Inventories
-			event.setCancelled(true);
-			player.openInventory(inventory);
-			PhatLoots.openInventory(player, inventory, block.getLocation(),
-					global);
+                        fInventory = new ForgettableInventory(PhatLoots.plugin, inventory) {
+                            @Override
+                            protected void execute() {
+                                inventories.remove(KEY);
+                            }
+                        };
+                        inventories.put(KEY, fInventory);
+                    }
 
-			break;
+                    //Forget the Inventory in the scheduled time
+                    fInventory.schedule();
 
-		default:
-			return;
-		}
+                    //Swap the Inventories
+                    event.setCancelled(true);
+                    player.openInventory(inventory);
+                    PhatLoots.openInventory(player, inventory, block.getLocation(), false);
+                }
 
-		PhatLootChest plChest = new PhatLootChest(block);
-		for (PhatLoot phatLoot : phatLoots) {
-			phatLoot.rollForLoot(player, plChest, inventory);
-			phatLoot.saveLootTimes();
-		}
-	}
+                break;
 
-	/**
-	 * Checks if a Player loots a PhatLootChest
-	 * 
-	 * @param event
-	 *            The PlayerInteractEvent that occurred
-	 */
-	@EventHandler(ignoreCancelled = true)
-	public void onPlayerCloseChest(InventoryCloseEvent event) {
-		Inventory inv = event.getInventory();
-		InventoryHolder holder = inv.getHolder();
-		if (holder instanceof Chest) {
-			HumanEntity human = event.getPlayer();
-			if (human instanceof Player) {
-				Player player = (Player) human;
-				Location location = ((Chest) holder).getLocation();
-				String key = "global@" + location.toString();
-				if (inventories.containsKey(key)) {
-					PhatLoots.closeInventory(player, inv, location, true);
-				} else if (inventories.containsKey(player.getName()
-						+ key.substring(6))) {
-					PhatLoots.closeInventory(player, inv, location, false);
-				}
-			}
-		}
-	}
+            default:
+                if (phatLoots == null) {
+                    //Return if the Block is not a PhatLootChest
+                    phatLoots = PhatLoots.getPhatLoots(block, player);
+                    if (phatLoots.isEmpty()) {
+                        return;
+                    }
+                }
 
-	/**
-	 * Checks if a PhatLootChest is powered
-	 * 
-	 * @param event
-	 *            The BlockPhysicsEvent that occurred
-	 */
-	@EventHandler(ignoreCancelled = true)
-	public void onBlockPowered(BlockPhysicsEvent event) {
-		Block block = event.getBlock();
-		if (block.getType() != Material.DISPENSER) {
-			return;
-		}
+                boolean global = true;
+                for (PhatLoot phatLoot : phatLoots) {
+                    if (!phatLoot.global) {
+                        global = false;
+                        break;
+                    }
+                }
 
-		if (block.getBlockPower() == 0) {
-			return;
-		}
+                //Create the custom key using the Player Name and Block location
+                final String KEY = (global ? "global" : player.getName())
+                                    + "@" + block.getLocation().toString();
 
-		// Return if the Dispenser is not a PhatLootChest
-		if (!isPhatLootChest(block)) {
-			return;
-		}
+                //Grab the custom Inventory belonging to the Player
+                ForgettableInventory fInventory = inventories.get(KEY);
+                if (fInventory != null) {
+                    inventory = fInventory.getInventory();
+                } else {
+                    String name = chestName.replace("<name>", phatLoots.getFirst().name.replace('_', ' '));
 
-		Player player = getNearestPlayer(block.getLocation());
-		if (player == null) {
-			return;
-		}
+                    //Create a new Inventory for the Player
+                    inventory = PhatLoots.server.createInventory(null,
+                                                                 inventory == null
+                                                                 ? 27
+                                                                 : inventory.getSize()
+                                                                 , name);
 
-		// Return if the Player does not have permission to receive loots
-		if (!player.hasPermission("phatloots.use")) {
-			player.sendMessage(PhatLootsMessages.permission);
-			return;
-		}
+                    fInventory = new ForgettableInventory(PhatLoots.plugin, inventory) {
+                        @Override
+                        protected void execute() {
+                            inventories.remove(KEY);
+                        }
+                    };
+                    inventories.put(KEY, fInventory);
+                }
 
-		Dispenser dispenser = (Dispenser) block.getState();
-		Inventory inventory = dispenser.getInventory();
+                //Forget the Inventory in the scheduled time
+                fInventory.schedule();
 
-		PhatLootChest plChest = new PhatLootChest(block);
-		for (PhatLoot phatLoot : PhatLoots.getPhatLoots(block, player)) {
-			phatLoot.rollForLoot(player, plChest, inventory);
-			phatLoot.saveLootTimes();
-		}
-	}
+                if (type == Material.ENDER_CHEST) {
+                    //Swap the Inventories
+                    event.setCancelled(true);
+                    PhatLoots.openInventory(player, inventory, block.getLocation(), global);
+                }
+                player.openInventory(inventory);
 
-	/**
-	 * Prevents non-admins from breaking PhatLootsChests
-	 * 
-	 * @param event
-	 *            The BlockBreakEvent that occurred
-	 */
-	@EventHandler(ignoreCancelled = true)
-	public void onBlockBreak(BlockBreakEvent event) {
-		// Return if the Material of the Block is not a Chest or Furnace
-		Block block = event.getBlock();
-		switch (block.getType()) {
-		case ENDER_CHEST:
-			break;
-		case CHEST:
-			break;
-		case FURNACE:
-			break;
-		default:
-			return;
-		}
+                break;
+            }
 
-		if (!isPhatLootChest(block)) {
-			return;
-		}
+        default: return;
+        }
 
-		// Cancel if the Block was not broken by a Player
-		Player player = event.getPlayer();
-		if (player == null) {
-			event.setCancelled(true);
-			return;
-		}
+        PhatLootChest plChest = new PhatLootChest(block);
+        for (PhatLoot phatLoot : phatLoots) {
+            phatLoot.rollForLoot(player, plChest, inventory);
+        }
+    }
 
-		// Cancel if the Block was not broken by an Admin
-		if (!player.hasPermission("phatloots.admin")) {
-			player.sendMessage(PhatLootsMessages.permission);
-			event.setCancelled(true);
-		} else {
-			removePhatLootChest(block);
-		}
-	}
+    /**
+     * Checks if a Player loots a PhatLootChest
+     *
+     * @param event The PlayerInteractEvent that occurred
+     */
+    @EventHandler (ignoreCancelled = true)
+    public void onPlayerCloseChest(InventoryCloseEvent event) {
+        Inventory inv = event.getInventory();
+        InventoryHolder holder = inv.getHolder();
+        if (holder instanceof Chest) {
+            HumanEntity human = event.getPlayer();
+            if (human instanceof Player) {
+                Player player = (Player) human;
+                Location location = ((Chest) holder).getLocation();
+                String key = "global@" + location.toString();
+                if (inventories.containsKey(key)) {
+                    PhatLoots.closeInventory(player, inv, location, true);
+                } else if (inventories.containsKey(player.getName() + key.substring(6))) {
+                    PhatLoots.closeInventory(player, inv, location, false);
+                }
+            }
+        }
+    }
 
-	/**
-	 * Manages Mob drops
-	 * 
-	 * @param event
-	 *            The EntityDeathEvent that occurred
-	 */
-	@EventHandler(ignoreCancelled = true)
-	public void onEntityDeath(EntityDeathEvent event) {
-		LivingEntity entity = event.getEntity();
-		Location location = entity.getLocation();
-		String name = entity.getType().getName();
+    /**
+     * Prevents non-admins from breaking PhatLootsChests
+     *
+     * @param event The BlockBreakEvent that occurred
+     */
+    @EventHandler (ignoreCancelled = true)
+    public void onBlockBreak(BlockBreakEvent event) {
+        //Return if the Material of the Block is not a Chest or Furnace
+        Block block = event.getBlock();
+        switch (block.getType()) {
+            case ENDER_CHEST: break;
+            case CHEST: break;
+            case FURNACE: break;
+            default: return;
+        }
 
-		if (mobRegions) {
-			for (Region region : RegionOwn.mobRegions.values()) {
-				if (region.contains(location)) {
-					name += "@" + region.name;
-				}
-			}
-		}
+        if (!isPhatLootChest(block)) {
+            return;
+        }
 
-		PhatLoot phatLoot = PhatLoots.getPhatLoot(name + '@'
-				+ location.getWorld().getName());
-		if (phatLoot == null) {
-			phatLoot = PhatLoots.getPhatLoot(name);
-		}
-		if (phatLoot != null) {
-			event.setDroppedExp(phatLoot.rollForLoot(entity.getKiller(),
-					event.getDrops()));
-		}
-	}
+        //Cancel if the Block was not broken by a Player
+        Player player = event.getPlayer();
+        if (player == null) {
+            event.setCancelled(true);
+            return;
+        }
 
-	/**
-	 * Manages Mob loot spawns
-	 * 
-	 * @param event
-	 *            The CreatureSpawnEvent that occurred
-	 */
-	@EventHandler(ignoreCancelled = true)
-	public void onMobSpawn(CreatureSpawnEvent event) {
-		LivingEntity entity = event.getEntity();
-		Location location = entity.getLocation();
-		String name = entity.getType().getName() + "Spawn";
+        //Cancel if the Block was not broken by an Admin
+        if (!player.hasPermission("phatloots.admin")) {
+            player.sendMessage(PhatLootsConfig.permission);
+            event.setCancelled(true);
+        }
+    }
 
-		if (mobRegions) {
-			for (Region region : RegionOwn.mobRegions.values()) {
-				if (region.contains(location)) {
-					name += "@" + region.name;
-					break;
-				}
-			}
-		}
-
-		PhatLoot phatLoot = PhatLoots.getPhatLoot(name + '@'
-				+ location.getWorld().getName());
-		if (phatLoot == null) {
-			phatLoot = PhatLoots.getPhatLoot(name);
-		}
-		if (phatLoot != null) {
-			phatLoot.rollForLoot(event.getEntity());
-		}
-	}
-
-	/**
-	 * Returns true if the given Block is linked to a PhatLoot
-	 * 
-	 * @param block
-	 *            the given Block
-	 * @return True if the given Block is linked to a PhatLoot
-	 */
-	public boolean isPhatLootChest(Block block) {
-		PhatLootChest plChest = new PhatLootChest(block);
-		for (PhatLoot phatLoot : PhatLoots.getPhatLoots()) {
-			if (phatLoot.containsChest(plChest)) {
-				return true;
-			}
-		}
-		return false;
-	}
-	
-	/**
-	 * Returns true if the given Block has been removed from a PhatLoot collection
-	 * 
-	 * @param block
-	 *            the given Block
-	 * @return True if the given Block is removed from PhatLoots
-	 */
-	public boolean removePhatLootChest(Block block) {
-		PhatLootChest plChest = new PhatLootChest(block);
-		for (PhatLoot phatLoot : PhatLoots.getPhatLoots()) {
-			if (phatLoot.containsChest(plChest)) {
-				phatLoot.removeChest(block);
-				return true;
-			}
-		}
-		return false;
-	}
-
-	/**
-	 * Returns the Player that is closest to the given Location Returns null if
-	 * no Players are within 50 Blocks
-	 * 
-	 * @param location
-	 *            The given Location
-	 * @return the closest Player
-	 */
-	private Player getNearestPlayer(Location location) {
-		Player nearestPlayer = null;
-		double shortestDistance = 2500;
-		for (Player player : location.getWorld().getPlayers()) {
-			Location playerLocation = player.getLocation();
-			double distanceToPlayer = location.distanceSquared(playerLocation);
-			if (distanceToPlayer < shortestDistance) {
-				nearestPlayer = player;
-				shortestDistance = distanceToPlayer;
-			}
-		}
-		return nearestPlayer;
-	}
+    /**
+     * Returns true if the given Block is linked to a PhatLoot
+     *
+     * @param block the given Block
+     * @return True if the given Block is linked to a PhatLoot
+     */
+    public boolean isPhatLootChest(Block block) {
+        PhatLootChest plChest = new PhatLootChest(block);
+        for (PhatLoot phatLoot : PhatLoots.getPhatLoots()) {
+            if (phatLoot.containsChest(plChest)) {
+                return true;
+            }
+        }
+        return false;
+    }
 }
